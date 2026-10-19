@@ -188,6 +188,46 @@ it(`transforms a production bundle with the production Babel env`, () => {
   );
 });
 
+it(`sets BABEL_ENV to production for a production bundle`, () => {
+  vol.fromJSON({}, '/');
+  const originalBabelEnv = process.env.BABEL_ENV;
+  process.env.BABEL_ENV = 'development';
+  let babelEnv: string | undefined;
+
+  try {
+    transformer.transform({
+      filename: 'foo.js',
+      options: {
+        globalPrefix: '',
+        enableBabelRuntime: true,
+        enableBabelRCLookup: true,
+        dev: false,
+        projectRoot: '/',
+        inlineRequires: false as any,
+        minify: false,
+        platform: 'ios',
+        publicPath: '/',
+        customTransformOptions: Object.create({}),
+      },
+      src: 'export default 1;',
+      plugins: [
+        () => {
+          babelEnv = process.env.BABEL_ENV;
+          return { visitor: {} };
+        },
+      ],
+    });
+  } finally {
+    if (originalBabelEnv === undefined) {
+      delete process.env.BABEL_ENV;
+    } else {
+      process.env.BABEL_ENV = originalBabelEnv;
+    }
+  }
+
+  expect(babelEnv).toBe('production');
+});
+
 describe('getCacheKey', () => {
   let mockGetFileCacheKey: jest.Mock;
 
