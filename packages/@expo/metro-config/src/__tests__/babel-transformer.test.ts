@@ -82,6 +82,7 @@ it(`passes the environment as isServer to the babel preset`, () => {
     code: false,
     configFile: true,
     cwd: '/',
+    envName: 'development',
     extends: undefined,
     filename: 'foo.js',
     highlightCode: true,
@@ -149,6 +150,7 @@ it(`passes the environment as isReactServer to the babel preset`, () => {
     code: false,
     configFile: true,
     cwd: '/',
+    envName: 'development',
     extends: undefined,
     filename: 'foo.js',
     highlightCode: true,
@@ -157,6 +159,33 @@ it(`passes the environment as isReactServer to the babel preset`, () => {
     plugins: [],
     sourceType: 'unambiguous',
   });
+});
+
+it(`transforms a production bundle with the production Babel env`, () => {
+  vol.fromJSON({}, '/');
+
+  transformer.transform({
+    filename: 'foo.js',
+    options: {
+      globalPrefix: '',
+      enableBabelRuntime: true,
+      enableBabelRCLookup: true,
+      dev: false,
+      projectRoot: '/',
+      inlineRequires: false as any,
+      minify: false,
+      platform: 'ios',
+      publicPath: '/',
+      customTransformOptions: Object.create({}),
+    },
+    src: 'export default 1;',
+    plugins: [],
+  });
+
+  expect(babel.transformSync).toHaveBeenLastCalledWith(
+    'export default 1;',
+    expect.objectContaining({ envName: 'production' })
+  );
 });
 
 describe('getCacheKey', () => {
@@ -292,5 +321,13 @@ describe('isDefaultConfig', () => {
   it('rejects a resolved config with a different preset descriptor', () => {
     const { resolved } = setupConfigComparison(false);
     expect(resolved.isDefaultConfig(args)).toBe(false);
+  });
+
+  it('resolves the config for a production bundle with the production env', () => {
+    const { resolved, loadPartialConfigSync } = setupConfigComparison(true);
+    resolved.isDefaultConfig({ ...args, options: { ...args.options, dev: false } });
+    expect(loadPartialConfigSync).toHaveBeenCalledWith(
+      expect.objectContaining({ envName: 'production' })
+    );
   });
 });
