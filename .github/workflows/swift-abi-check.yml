@@ -1,0 +1,70 @@
+name: Swift ABI Check
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  detect:
+    runs-on: ubuntu-24.04
+    outputs:
+      changed: ${{ steps.diff.outputs.changed }}
+    steps:
+      - name: 👀 Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 100
+      - name: ⬇️ Fetch commits from base branch
+        run: git fetch origin ${{ github.base_ref }} --depth 100
+      - name: 🔎 Detect changes to ExpoModulesCore and ExpoModulesJSI
+        id: diff
+        run: |
+          if git diff --quiet origin/${{ github.base_ref }}...HEAD -- packages/expo-modules-core packages/expo-modules-jsi; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+  check:
+    name: Swift ABI check
+    needs: detect
+    if: ${{ !cancelled() && (needs.detect.result != 'success' || needs.detect.outputs.changed == 'true') }}
+    runs-on: macos-26
+    timeout-minutes: 90
+    steps:
+      - name: 👀 Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 100
+      - name: ⬇️ Fetch commits from base branch
+        run: git fetch origin ${{ github.base_ref }} --depth 100
+      - name: 🔨 Switch to Xcode 26.4.1
+        run: sudo xcode-select --switch /Applications/Xcode_26.4.1.app
+      - name: ➕ Add `bin` to GITHUB_PATH
+        run: echo "$(pwd)/bin" >> $GITHUB_PATH
+      - name: 🔨 Install pnpm
+        uses: pnpm/setup@703c52620218391530e48b9e8870d5c0082e1b9b # v2.1.0
+        with:
+          install: false
+      - name: 🔨 Setup Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          cache: 'pnpm'
+      - name: 📦 Install node modules
+        run: pnpm install --frozen-lockfile
+        env:
+          TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
+          TURBO_TEAM: expo
+      - name: 🏗️ Precompile ExpoModulesCore and ExpoModulesJSI
+        run: bin/expo-turbo run precompile-ios --filter=expo-modules-core --filter=expo-modules-jsi --cache=local:rw,remote:r
+        env:
+          RCT_HERMES_V1_ENABLED: '1'
+          TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
+          TURBO_TEAM: expo
+      - name: 🔍 Compare the Swift ABI with the published versions
+        run: et check-swift-abi --base-ref origin/${{ github.base_ref }} ${{ contains(github.event.pull_request.labels.*.name, 'abi-check-bypass') && '--bypass' || '' }}
